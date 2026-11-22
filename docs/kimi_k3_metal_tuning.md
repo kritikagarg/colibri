@@ -43,8 +43,12 @@ checkable.
 ### `OMP_NUM_THREADS` — 18 (all logical cores)
 
 Swept 6→18. **18 gave the best decode throughput (0.28 tok/s).** The built-in
-auto-sizer (`omp_tune.h`) caps the OpenMP team at `perflevel0` cores (6 on this
-chip), which is correct for P+E layouts but wrong here: the M5 Max's second tier
+auto-sizer (`omp_tune.h`) capped the OpenMP team at `perflevel0` cores (6 on this
+chip) when this was measured, which is correct for P+E layouts but wrong here.
+Since #2938 the sizer keeps every tier whose `hw.perflevelN.name` is not an
+efficiency tier, so a chip like this one — whose second tier is a Performance
+tier, not an Efficiency tier — now gets all of its cores by default; re-measure
+before trusting the sweep below. The M5 Max's second tier
 runs ~0.70× per core — well above the `N_fast/(N_fast+N_slow)=0.33` break-even
 for equal-split scheduling — so including all 18 helps rather than drags.
 `OMP_NUM_THREADS` overrides the auto-sizer (it yields if the env var is set).

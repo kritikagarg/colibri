@@ -50,7 +50,11 @@ Auto-tier plans size OpenMP from physical cores and bind workers across cores.
 Memory-bound quantized kernels can regress sharply when SMT siblings compete for
 limited memory channels. On a hybrid CPU the team is the performance cores only:
 an OpenMP team meets at a barrier after every matmul, so its slowest thread sets the
-pace. That is Apple Silicon's P-cores (`hw.perflevel0`), and on x86 the cores of the
+pace. On Apple Silicon that is every tier `hw.perflevelN.name` does not call an
+efficiency tier — not `hw.perflevel0` alone, and not "every tier but the last":
+an M5 Pro's two tiers are Super (6) and Performance (12) with no efficiency tier
+at all, so the team there is all 18 (#2938). Where the names cannot be read the
+sizer falls back to counting every tier but the last. On x86 it is the cores of the
 highest `EfficiencyClass` on Windows or the `cpu_core` PMU's on Linux (Intel's P-cores;
 an i5-13500, 6 P + 8 E cores, decoded Qwen3.8 IQ2_XS on the CPU at 9.40 tok/s on its 6
 P-cores against 9.00 on all 14). The GLM, Kimi K3, and OLMoE engines also apply that
