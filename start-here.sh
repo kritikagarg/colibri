@@ -20,11 +20,27 @@ here=$(cd "$(dirname "$0")" && pwd)
 launcher="$here/c/coli"
 [ -f "$launcher" ] || launcher="$here/coli"
 
-for candidate in python3 python; do
-    if command -v "$candidate" >/dev/null 2>&1 &&
-       "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
-        exec "$candidate" "$launcher" setup "$@"
-    fi
+# Look for python3/python on PATH first, as before, then for versioned names
+# (python3.15, python3.14, ...) and in the usual install prefixes. A Homebrew
+# python is often reachable only as python3.15, or lives in /opt/homebrew/bin
+# while PATH still finds Apple's /usr/bin/python3 stub first; a shell alias for
+# python3 is not visible to this script either.
+usable_python() {
+    case $1 in
+    */*) [ -x "$1" ] || return 1 ;;
+    *) command -v "$1" >/dev/null 2>&1 || return 1 ;;
+    esac
+    "$1" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null
+}
+
+for prefix in '' /opt/homebrew/bin/ /usr/local/bin/ /opt/local/bin/; do
+    for name in python3 python python3.19 python3.18 python3.17 python3.16 \
+                python3.15 python3.14 python3.13 python3.12 python3.11 python3.10; do
+        candidate="$prefix$name"
+        if usable_python "$candidate"; then
+            exec "$candidate" "$launcher" setup "$@"
+        fi
+    done
 done
 
 echo "colibri needs Python 3.10 or newer, and it was not found."
