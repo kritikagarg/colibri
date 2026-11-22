@@ -27,6 +27,15 @@ cd colibri
 ./start-here.sh
 ```
 
+`start-here.sh` needs Python 3.10 or newer. It looks for one on `PATH` first
+(`python3`, then `python`), then under the versioned names `python3.19` down to
+`python3.10`, and then in `/opt/homebrew/bin`, `/usr/local/bin` and
+`/opt/local/bin` — so a Homebrew or MacPorts Python reachable only as
+`python3.15` is found even when `/usr/bin/python3` is Apple's older stub
+(#2812). A shell *alias* cannot help here: a script does not see interactive
+aliases. If detection still fails, run the launcher with the interpreter
+directly: `/opt/homebrew/bin/python3.15 c/coli setup`.
+
 Both run `coli setup`, which does the rest:
 
 1. **Finds your hardware**: RAM, free disk where the model goes, CPU features,
