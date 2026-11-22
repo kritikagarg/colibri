@@ -3163,6 +3163,54 @@ class PhysicalCpuCountTest(unittest.TestCase):
                  mock.patch.object(sys, "platform", "darwin"):
                 self.assertEqual(physical_cpu_count(), want)
 
+    def _darwin_cores(self, values):
+        with mock.patch("resource_plan.subprocess.run", side_effect=self._darwin(values)), \
+             mock.patch.object(sys, "platform", "darwin"):
+            return physical_cpu_count()
+
+    def test_apple_last_perflevel_is_not_always_efficiency(self):
+        # #2938, an M5 Pro: 6 Super + 12 Performance, NO efficiency tier. Dropping
+        # the last tier gave 6 threads of 18 cores (0.60 tok/s vs 1.18 at 18).
+        self.assertEqual(self._darwin_cores({
+            "hw.nperflevels": 2,
+            "hw.perflevel0.name": "Super", "hw.perflevel0.logicalcpu": 6,
+            "hw.perflevel1.name": "Performance", "hw.perflevel1.logicalcpu": 12,
+            "hw.physicalcpu": 18}), 18)
+
+    def test_apple_named_tiers_keep_the_2194_and_m1_answers(self):
+        m6 = {"hw.nperflevels": 3,                      # #2194 stays 6, not 2
+              "hw.perflevel0.name": "Super", "hw.perflevel0.logicalcpu": 2,
+              "hw.perflevel1.name": "Performance", "hw.perflevel1.logicalcpu": 4,
+              "hw.perflevel2.name": "Efficiency", "hw.perflevel2.logicalcpu": 6,
+              "hw.physicalcpu": 12}
+        m1 = {"hw.nperflevels": 2,                      # an M1 Max: 8 P + 2 E
+              "hw.perflevel0.name": "Performance", "hw.perflevel0.logicalcpu": 8,
+              "hw.perflevel1.name": "Efficiency", "hw.perflevel1.logicalcpu": 2,
+              "hw.physicalcpu": 10}
+        lower = dict(m1, **{"hw.perflevel1.name": "efficiency cores"})  # matched case-insensitively
+        single = {"hw.nperflevels": 1,                  # one tier is every core
+                  "hw.perflevel0.name": "Performance", "hw.perflevel0.logicalcpu": 8,
+                  "hw.physicalcpu": 8}
+        for values, want in ((m6, 6), (m1, 8), (lower, 8), (single, 8)):
+            with self.subTest(name=values.get("hw.perflevel0.name"), levels=values["hw.nperflevels"]):
+                self.assertEqual(self._darwin_cores(values), want)
+
+    def test_apple_unreadable_names_fall_back_to_all_but_the_last_tier(self):
+        # No hw.perflevel*.name (older macOS): keep the pre-#2938 heuristic rather
+        # than counting the efficiency tier into a barriered team (#707).
+        two = {"hw.nperflevels": 2, "hw.perflevel0.logicalcpu": 8,
+               "hw.perflevel1.logicalcpu": 2, "hw.physicalcpu": 10}
+        three = {"hw.nperflevels": 3, "hw.perflevel0.logicalcpu": 2,
+                 "hw.perflevel1.logicalcpu": 4, "hw.perflevel2.logicalcpu": 6,
+                 "hw.physicalcpu": 12}
+        partial = dict(three, **{"hw.perflevel0.name": "Super"})  # one name only
+        for values, want in ((two, 8), (three, 6), (partial, 6)):
+            with self.subTest(levels=values["hw.nperflevels"], named="hw.perflevel0.name" in values):
+                self.assertEqual(self._darwin_cores(values), want)
+
+    def test_intel_mac_has_no_perflevels_and_uses_physicalcpu(self):
+        self.assertEqual(self._darwin_cores({"hw.physicalcpu": 4, "hw.logicalcpu": 8}), 4)
+
 
 if __name__ == "__main__":
     unittest.main()

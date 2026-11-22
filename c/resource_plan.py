@@ -3000,17 +3000,36 @@ def physical_cpu_count():
     if sys.platform == "darwin":
         # Apple Silicon: every core but the efficiency tier's paces barriered expert
         # matmuls (omp_tune.h coli_physical_cores, the same rule). The tiers are
-        # hw.perflevel0 .. hw.perflevel(N-1), fastest first, the last the efficiency
-        # cores: two on an M1-M4 (perflevel0 alone), three on an M6 (2 Super + 4
-        # Performance, #2194); one tier is every core.
-        def sysctl_int(name):
+        # hw.perflevel0 .. hw.perflevel(N-1), fastest first, and the efficiency
+        # cores are the tier *named* "Efficiency", not simply the last one: an
+        # M1-M4 is Performance + Efficiency (perflevel0 alone), an M6 is 2 Super +
+        # 4 Performance + 6 Efficiency (6, #2194), an M5 Pro is 6 Super + 12
+        # Performance with no efficiency tier at all, so every tier counts (18,
+        # not the 6 that "all but the last" gave, #2938). One tier is every core,
+        # and when the names cannot be read we fall back to the older
+        # all-but-the-last rule so nothing regresses without the sysctl.
+        def sysctl_str(name):
             result = subprocess.run(["sysctl", "-n", name], text=True, capture_output=True,
                                     check=True, timeout=5)
-            return int(result.stdout.strip())
+            return result.stdout.strip()
+
+        def sysctl_int(name):
+            return int(sysctl_str(name))
+
+        def perf_tiers(levels):
+            """The perflevel indices the team covers, fastest tier first."""
+            if levels <= 1:
+                return [0]
+            try:
+                names = [sysctl_str(f"hw.perflevel{i}.name") for i in range(levels)]
+            except (OSError, ValueError, subprocess.SubprocessError):
+                return list(range(levels - 1))
+            kept = [i for i, name in enumerate(names) if "efficiency" not in name.lower()]
+            return kept or list(range(levels - 1))
         try:
-            levels = sysctl_int("hw.nperflevels")
+            levels = min(sysctl_int("hw.nperflevels"), 16)
             cores = sum(sysctl_int(f"hw.perflevel{i}.logicalcpu")
-                        for i in range(min(max(levels - 1, 1), 16))) if levels >= 1 else 0
+                        for i in perf_tiers(levels)) if levels >= 1 else 0
             if cores > 0:
                 return cores
         except (OSError, ValueError, subprocess.SubprocessError):
