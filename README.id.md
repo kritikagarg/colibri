@@ -5,6 +5,7 @@
 <p align="center">
   <a href="https://justvugg.github.io/colibri"><img src="https://img.shields.io/badge/website-justvugg.github.io%2Fcolibri-1f6feb" alt="Situs web"></a>
   <a href="https://github.com/JustVugg/colibri/releases"><img src="https://img.shields.io/github/v/release/JustVugg/colibri?color=2ea043" alt="Rilis terbaru"></a>
+  <a href="https://news.ycombinator.com/item?id=48842459"><img src="https://hackergit.org/badge/JustVugg/colibri.svg" alt="Hacker News" height="20"></a>
 </p>
 
 <p align="center">
