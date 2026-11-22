@@ -99,6 +99,28 @@ static int coli_count_windows_physical_cores(const void *buf, DWORD bytes)
 }
 #endif
 
+#if defined(__APPLE__)
+/* Is this perflevel the efficiency tier? Apple names the tiers "Efficiency",
+ * "Performance" and "Super"; only the efficiency one is kept out of the
+ * barriered team (#2938). Case-insensitive substring, hand-rolled so this
+ * header needs neither <ctype.h> nor the non-standard strcasestr. */
+static int coli_perflevel_is_efficiency(const char *name)
+{
+    static const char want[] = "efficiency";
+    for (; *name; name++) {
+        size_t i = 0;
+        for (;;) {
+            char c = name[i];
+            if (c >= 'A' && c <= 'Z') c = (char)(c + ('a' - 'A'));
+            if (!want[i] || c != want[i]) break;
+            i++;
+        }
+        if (!want[i]) return 1;   /* matched the whole of "efficiency" */
+    }
+    return 0;
+}
+#endif
+
 static int coli_physical_cores(void)
 {
 #if defined(_WIN32)
@@ -117,15 +139,43 @@ static int coli_physical_cores(void)
     /* Apple Silicon: every core but the efficiency tier's. hw.physicalcpu counts
      * the E-cores too (10 on an M1 Max), and with a barrier per matmul the slowest
      * thread sets the pace: the E-cores slowed the team (#707, -4.2% decode). The
-     * tiers are hw.perflevel0 .. hw.perflevel(N-1), fastest first, the last the
-     * efficiency cores: an M1-M4 has two (perflevel0, its P-cores), an M6 three
-     * (2 Super, 4 Performance, 6 Efficiency: 6, not perflevel0's 2, #2194); one
-     * tier is every core. An Intel Mac has no perflevel*: hw.physicalcpu. */
+     * tiers are hw.perflevel0 .. hw.perflevel(N-1), fastest first, and the
+     * efficiency cores are the tier NAMED "Efficiency" — not simply the last one:
+     * an M1-M4 is Performance + Efficiency (perflevel0, its P-cores), an M6 is
+     * 2 Super + 4 Performance + 6 Efficiency (6, not perflevel0's 2, #2194), an
+     * M5 Pro is 6 Super + 12 Performance with no efficiency tier at all, so every
+     * tier counts (18, not the 6 that "all but the last" gave, #2938). One tier
+     * is every core. When the names cannot be read we fall back to the older
+     * all-but-the-last rule, so no platform regresses if the sysctl is missing.
+     * An Intel Mac has no perflevel*: hw.physicalcpu. */
     int n = 0; size_t sz = sizeof(n);
     if (sysctlbyname("hw.nperflevels", &n, &sz, NULL, 0) == 0 && n >= 1) {
-        int tot = 0, last = n > 1 ? n - 1 : 1;
-        for (int i = 0; i < last && i < 16; i++) {
-            char nm[48]; snprintf(nm, sizeof nm, "hw.perflevel%d.logicalcpu", i);
+        if (n > 16) n = 16;
+        int keep[16], nkeep = 0;
+        if (n > 1) {
+            int named = 1;
+            for (int i = 0; i < n; i++) {
+                char key[48], nm[64];
+                snprintf(key, sizeof key, "hw.perflevel%d.name", i);
+                memset(nm, 0, sizeof nm);
+                /* One byte short of the buffer, so the NUL survives even if the
+                 * kernel fills every byte it was given. */
+                size_t nsz = sizeof nm - 1;
+                if (sysctlbyname(key, nm, &nsz, NULL, 0) != 0 || nm[0] == '\0') {
+                    named = 0; break;
+                }
+                if (!coli_perflevel_is_efficiency(nm)) keep[nkeep++] = i;
+            }
+            if (!named || nkeep == 0) {           /* no names: all but the last */
+                nkeep = n - 1;
+                for (int i = 0; i < nkeep; i++) keep[i] = i;
+            }
+        } else {
+            keep[nkeep++] = 0;                    /* a single tier is every core */
+        }
+        int tot = 0;
+        for (int i = 0; i < nkeep; i++) {
+            char nm[48]; snprintf(nm, sizeof nm, "hw.perflevel%d.logicalcpu", keep[i]);
             int c = 0; sz = sizeof(c);
             if (sysctlbyname(nm, &c, &sz, NULL, 0) == 0 && c > 0) tot += c;
         }
