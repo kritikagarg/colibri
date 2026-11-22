@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`coli tune` on Qwen3-Coder: "engine reported no decode speed"** (#2590). Tune put every
+  qwen36-family checkpoint's prompts in one form, ending in an open `<think>`; Qwen3-Coder has
+  no thinking mode and ended its turn on the first token there (0 tokens, measured on
+  Qwen3-Coder-30B-A3B with CUDA), so the baseline had no speed and the tune stopped. The
+  family's prompts are now rendered by the gateway (`openai_server.tune_chat_prompt`), each
+  checkpoint with its own template and the default reasoning a chat request gets: the request
+  tune times is the one `coli serve` is sent. Qwen3-Coder tunes to the end; Qwen3.6 is timed
+  without thinking, as it is served unless asked.
+
 ## [2.1.0] - 2026-10-31
 
 387 pull requests since v2.0.0, 208 of them from 35 contributors. GGUF files run
