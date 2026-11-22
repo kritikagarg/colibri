@@ -322,6 +322,17 @@ endif
 # NVCCFLAGS wholesale to get it would also discard $(CUDA_GENCODE) and any
 # -ccbin the user set above.
 NVCC_STD ?= c++17
+# Opt-out for the forced glibc/CUDA math compat include added below (#966), for
+# a distributor whose toolchain already reconciles the two declarations (CUDA
+# 13.x headers do): CUDA_GLIBC_MATH_COMPAT=0 drops that one -Xcompiler include
+# and nothing else, instead of patching this file or restating the whole
+# NVCCFLAGS value (#2647). Defaults to 1 — the clash is a hard compile error on
+# a current glibc with CUDA <= 12.9, so the fix stays on for anyone who does not
+# ask otherwise, and like LTO above only the exact value 1 keeps it (a typo
+# reads as off, which `make cuda-glibc-math-compat-check` prints without needing
+# nvcc or a GPU). Declared here, outside the host-compiler branches, so that
+# check can report it on any platform; it only ever applies on Linux.
+CUDA_GLIBC_MATH_COMPAT ?= 1
 ifneq ($(IS_WIN),)
 # nvcc's host compiler on Windows is MSVC cl.exe: the GCC-style
 # -Xcompiler=-Wall,-Wextra is rejected ("D8021 invalid numeric argument
@@ -340,8 +351,11 @@ NVCCFLAGS ?= -O3 -std=$(NVCC_STD) -ftz=false $(CUDA_GENCODE) -Xcompiler=-Wall,-W
 # under C++17 (noexcept is part of the function type since C++17). Force-include
 # a compat header that strips __THROW from the host pass; see
 # glibc_c23_math_compat.h. MSVC never sees glibc headers, so Linux-only.
+# CUDA_GLIBC_MATH_COMPAT=0 (declared above) opts out of just this one include.
 ifneq ($(LINUX),)
+ifeq ($(CUDA_GLIBC_MATH_COMPAT),1)
 NVCCFLAGS += -Xcompiler=-include,$(CURDIR)/glibc_c23_math_compat.h
+endif
 endif
 endif
 # CUDA 13.1 host_config.h accepts only Visual Studio 2019-2022 and refuses
@@ -1231,6 +1245,23 @@ endif
 rans: $(RANSLIB)
 $(RANSLIB): tools/rans_ctypes.c
 	$(CC) $(CFLAGS) -fPIC -shared $< -o $@ $(LDFLAGS)
+
+# The configuration check for CUDA_GLIBC_MATH_COMPAT (#2647): it prints the
+# selected mode and the NVCCFLAGS it produces, and fails if the two disagree, so
+# the default and the opt-out recipe can be told apart without nvcc, a CUDA
+# toolkit or a GPU — the point being that a distributor can confirm which flag
+# line their build will use before compiling anything. Recursively expanded (=)
+# on purpose: DEEPGEMM/NCCL append to NVCCFLAGS further up, and the check should
+# report the final value, not the one at this line.
+CUDA_GLIBC_MATH_COMPAT_WANT = $(if $(LINUX),$(if $(filter 1,$(CUDA_GLIBC_MATH_COMPAT)),on,off),off)
+CUDA_GLIBC_MATH_COMPAT_GOT  = $(if $(findstring glibc_c23_math_compat.h,$(NVCCFLAGS)),on,off)
+.PHONY: cuda-glibc-math-compat-check
+cuda-glibc-math-compat-check:
+	@echo "CUDA_GLIBC_MATH_COMPAT = $(CUDA_GLIBC_MATH_COMPAT) (default 1; Linux-only, LINUX='$(LINUX)')"
+	@echo "forced glibc math compat include: $(CUDA_GLIBC_MATH_COMPAT_GOT) (expected $(CUDA_GLIBC_MATH_COMPAT_WANT))"
+	@echo "NVCCFLAGS = $(NVCCFLAGS)"
+	@test "$(CUDA_GLIBC_MATH_COMPAT_GOT)" = "$(CUDA_GLIBC_MATH_COMPAT_WANT)" || { \
+	  echo "cuda-glibc-math-compat-check: NVCCFLAGS disagrees with CUDA_GLIBC_MATH_COMPAT" >&2; exit 1; }
 
 cuda-test: tests/test_mxfp4_expert_cuda.cu backend_cuda.cu backend_cuda.h fp8_format.h backend_gpu_compat.h tests/test_backend_cuda.cu tests/test_ragged_attention.cu tests/test_absorb_determinism.cu tests/test_mxfp4_cuda.cu tests/mxfp4_ref.c tests/test_fp8_warp_cuda.cu tests/test_fp8_cuda.cu tests/test_weights_owned_cuda.cu tests/test_cuda_fmt_trap_cuda.cu tests/test_alloc_footprint_cuda.cu tests/test_cuda_init_failure.cu
 	@command -v "$(GPUCC)" >/dev/null 2>&1 || { echo "$(GPUCC_NAME) not found" >&2; exit 1; }

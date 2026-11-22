@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Build, tests and CI
+
+- **#2647**: `CUDA_GLIBC_MATH_COMPAT=0` opts out of the forced glibc ≥ 2.41 /
+  CUDA math compatibility include (#966) on its own, for a toolchain that
+  already reconciles those declarations, instead of patching `c/Makefile` or
+  restating the whole `NVCCFLAGS` value. It stays on by default, and
+  `make -C c cuda-glibc-math-compat-check` tells the two recipes apart without
+  nvcc or a GPU.
+
 ## [2.1.0] - 2026-10-31
 
 387 pull requests since v2.0.0, 208 of them from 35 contributors. GGUF files run

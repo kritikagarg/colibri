@@ -20,6 +20,11 @@ with a CPU-only binary, an invalid device, or an unavailable runtime fails at
 startup instead of silently falling back. For Windows, see
 [windows.md](windows.md) (runtime DLL path).
 
+The Linux build force-includes a small glibc ≥ 2.41 / CUDA math compatibility header into
+nvcc's host pass (#966). `CUDA_GLIBC_MATH_COMPAT=0` drops that one flag for a toolchain
+that already handles it, leaving every other nvcc flag in place; see
+[BUILD-cuda-glibc241.md](BUILD-cuda-glibc241.md#opting-out-of-the-bundled-shim-cuda_glibc_math_compat).
+
 ## The VRAM expert tier
 
 A measured `PIN` profile promotes its hottest experts into a persistent VRAM
