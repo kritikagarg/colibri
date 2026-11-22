@@ -57,6 +57,16 @@ P-cores against 9.00 on all 14). The GLM, Kimi K3, and OLMoE engines also apply 
 cap when launched directly; explicit `OMP_NUM_THREADS` and the
 `COLI_NO_OMP_TUNE` kill switch always take precedence.
 
+In a container the plan is bounded by the CPUs the container may actually use,
+not by the host's cores: the launcher reads the cgroup CPU quota
+(`/sys/fs/cgroup/cpu.max`, and the v1 `cpu.cfs_quota_us`/`cpu.cfs_period_us`
+pair) and the affinity mask, and the tuning sweep and any saved profile stay
+within the same bound (#2914). This matters for a CFS quota rather than a
+cpuset, where `nproc` and the topology still report the whole host: a pod with
+`cpu.max` of `765000 100000` sees 48 physical cores but may use 7.65, and a
+48-thread team there cost decode 2-4 tok/s against 134 with
+`OMP_NUM_THREADS=7`.
+
 > Note (#471): exporting `OMP_PROC_BIND`/`OMP_PLACES` used to interact badly with
 > the engine's one-time OpenMP tuning re-exec on Linux — the re-exec'd image
 > inherited the first image's place-0 thread binding and the whole team landed on
